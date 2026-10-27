@@ -7,6 +7,7 @@ import { Sfx } from './audio/Sfx';
 import { Player, PLAYER_RADIUS, START_Z } from './entities/Player';
 import { Clown } from './entities/Clown';
 import { ClownDirector } from './entities/ClownDirector';
+import { CookieDirector, type Cookie } from './entities/CookieDirector';
 import { Particles, SnowFall, SpeedLines } from './fx/Particles';
 import { Hud } from './ui/Hud';
 import { Mountains, Sky, World } from './world/World';
@@ -29,7 +30,8 @@ const RAGE_HOT = new THREE.Color(0xff9a1a);
 const BARK = new THREE.Color(0x7a4a2a);
 const LEAF = new THREE.Color(0x1f8a52);
 const ROCK = new THREE.Color(0x7d8799);
-const CONFETTI = [0xff3da5, 0xffe14a, 0x33d17a, 0x3a7bff, 0xff6a00, 0x9b3dff].map((c) => new THREE.Color(c));
+const COOKIE = [0xd9a05b, 0xb87a38, 0x3a2013].map((c) => new THREE.Color(c));
+const CONFETTI =[0xff3da5, 0xffe14a, 0x33d17a, 0x3a7bff, 0xff6a00, 0x9b3dff].map((c) => new THREE.Color(c));
 
 const OUCH = ['OUCH!', 'BONK!', 'YIKES!', 'MY SPINE!', 'OOF!', 'NURSE!'];
 
@@ -43,6 +45,7 @@ export class Game {
   private readonly mountains = new Mountains();
   private readonly player = new Player();
   private readonly director: ClownDirector;
+  private readonly cookies: CookieDirector;
   private readonly titleClown = new Clown('chaser', 0);
   private readonly particles = new Particles(3500);
   private readonly snow = new SnowFall();
@@ -100,6 +103,7 @@ export class Game {
     this.scene.add(this.sky.mesh, this.mountains.group);
     this.world = new World(this.scene);
     this.director = new ClownDirector(this.scene);
+    this.cookies = new CookieDirector(this.scene);
     this.scene.add(this.player.model.root, this.titleClown.model.root, this.particles.points, this.snow.points);
     this.rig.camera.add(this.speedLines.lines);
 
@@ -152,6 +156,7 @@ export class Game {
     this.elapsed = this.distance = this.bonus = this.coins = this.dyingTime = this.crashes = 0;
     this.director.reset(this.player, this.cruise);
     this.director.calm();
+    this.cookies.reset();
     this.particles.clear();
     this.honkTimer = 0;
     this.nextMilestone = 500;
@@ -360,6 +365,7 @@ export class Game {
         trip: (c, o) => this.onClownTrip(c, o),
         hazardHit: (c) => this.onHazardHit(c),
       });
+      this.cookies.step(h, p, cruise, this.world, { hit: (c) => this.onCookieHit(c) });
       if (caught) {
         this.beginCaught(caught);
         return;
@@ -377,6 +383,14 @@ export class Game {
       this.sfx.honk(1.35);
       this.hud.popup('CLOWN CROSSING!', '#ff5ad1');
     }
+
+    const rolled = this.cookies.updateSpawning(dt, this.elapsed, p, cruise, this.world);
+    if (rolled === 'behind') {
+      this.sfx.rumble();
+      this.hud.popup('COOKIE BOULDER BEHIND!', '#ffb04a', true);
+    }
+    this.cookies.sync(dt, p);
+    if (this.cookies.nearestBehind < 60 && this.cookies.nearestBehind > 0 && Math.random() < dt * 4) this.sfx.rumble(0.35);
 
     this.director.sync(dt, p);
     if (this.crashes >= 3) this.emitRage(dt);
@@ -465,6 +479,27 @@ export class Game {
     this.sfx.honk(1.4);
     this.particles.burst(at, 60, 10, CONFETTI, 0.4, 1.1);
     this.registerCrash(c.role === 'walker' ? 'BONKED A CLOWN!' : 'CLOWN COLLISION!');
+  }
+
+  /** The doctor ran into a rolling cookie boulder. */
+  private onCookieHit(c: Cookie): void {
+    const p = this.player;
+    const at = this.tmp.set(c.pos.x, c.pos.y + c.radius, c.pos.z);
+    if (p.boost > 0) {
+      // Adrenaline lets you smash straight through it.
+      c.struck = true;
+      c.despawn();
+      this.bonus += 40;
+      this.hud.popup('COOKIE CRUSHER! +40', '#2ff3c8');
+      this.rig.shake(0.3);
+      this.sfx.crash();
+      this.particles.burst(at, 80, 12, COOKIE, 0.45, 1.2);
+      return;
+    }
+    if (!p.crash(c.pos.x, c.pos.z)) return;
+    c.struck = true;
+    this.particles.burst(at, 70, 11, COOKIE, 0.45, 1.1);
+    this.registerCrash('COOKIE CRUSH!');
   }
 
   /**

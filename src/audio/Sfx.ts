@@ -193,6 +193,13 @@ export class Sfx {
     this.tone(320 * pitch, t + 0.17, 0.2, 'sawtooth', 0.12, undefined, 250 * pitch);
   }
 
+  /** Low rolling thunder: a cookie boulder is coming down the hill behind you. */
+  rumble(vol = 1): void {
+    const t = this.now;
+    this.noiseBurst(0.6, 180, 0.5 * vol);
+    this.tone(55, t, 0.6, 'sine', 0.5 * vol, undefined, 38);
+  }
+
   /** Descending "ha-ha-ha" for the clowns. */
   laugh(): void {
     const t = this.now;
